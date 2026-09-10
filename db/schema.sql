@@ -729,6 +729,10 @@ alter table intel_briefs add constraint intel_briefs_email_schedule_check
 -- fall back to the platform default (INTEL_EMAIL_TO, else the cost recipient + Sam) so nothing silently stops
 -- mailing if a brain has never been given its own list.
 alter table intel_briefs add column if not exists email_recipients jsonb not null default '[]'::jsonb;
+-- WHO THE CEO THOUGHT-LEADERSHIP ARTICLE GOES TO (Gary). The client CEO's own email(s), saved per brain so the
+-- send step prefills them (e.g. MoMo's Kagiso), editable at send. Separate from email_recipients (the internal
+-- intel digest list); this is the client's CEO, an external recipient of a drafted LinkedIn piece.
+alter table intel_briefs add column if not exists ceo_recipients jsonb not null default '[]'::jsonb;
 
 -- Findings are filed into the same queue (so accept/bin and "publish as a CEO article" work unchanged), but a
 -- Researcher finding also carries WHICH of the five sections it belongs to.

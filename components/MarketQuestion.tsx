@@ -29,13 +29,52 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
   const [busy, setBusy] = useState(false);
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [err, setErr] = useState("");
+  // The CEO thought-leadership draft flow (one open at a time).
+  const [draftFor, setDraftFor] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [draftText, setDraftText] = useState("");
+  const [art, setArt] = useState("");
+  const [recips, setRecips] = useState("");
+  const [ceoName, setCeoName] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sentFor, setSentFor] = useState("");
+  const [draftErr, setDraftErr] = useState("");
+
+  const CEO_API = "/api/studio/intel/ceo-article";
+
+  // Draft the CEO's article from a finding, and prefill the saved recipient(s) for this brain.
+  async function draftArticle(f: Finding) {
+    if (!f.id || drafting) return;
+    setDraftFor(f.id); setDrafting(true); setDraftErr(""); setDraftText(""); setSentFor("");
+    const [d, rec] = await Promise.all([
+      fetch(CEO_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "draft", clientId, id: f.id }) }).then((r) => r.json()).catch(() => null),
+      fetch(`${CEO_API}?clientId=${encodeURIComponent(clientId)}`).then((r) => r.json()).catch(() => null),
+    ]);
+    setDrafting(false);
+    if (!d?.ok) { setDraftErr(d?.error || "Couldn't draft that."); return; }
+    setDraftText(d.post || ""); setArt(d.art?.subject || "");
+    if (rec?.ceoName) setCeoName(rec.ceoName);
+    if (Array.isArray(rec?.recipients) && rec.recipients.length && !recips) setRecips(rec.recipients.join(", "));
+  }
+
+  // Send the (edited) article to the CEO's email(s); bcc's the sender.
+  async function sendArticle(f: Finding) {
+    if (!f.id || sending) return;
+    const recipients = recips.split(/[,;\n]/).map((s) => s.trim()).filter(Boolean);
+    if (!recipients.length) { setDraftErr("Add at least one recipient email."); return; }
+    setSending(true); setDraftErr("");
+    const d = await fetch(CEO_API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "send", clientId, id: f.id, recipients, post: draftText }) }).then((r) => r.json()).catch(() => null);
+    setSending(false);
+    if (!d?.ok) { setDraftErr(d?.error || "Couldn't send."); return; }
+    setSentFor(f.id); setDraftFor(null);
+  }
 
   // TWO MODES (Gary): "question" answers a specific ask (looks back ~90 days); "discover" proactively finds what is
   // NEW and relevant to the brain with no question typed (only ~14 days, so it surfaces genuine change).
   async function ask(mode: "question" | "discover" = "question") {
     if (busy || !clientId) return;
     if (mode === "question" && !q.trim()) return;
-    setBusy(true); setErr(""); setFindings(null);
+    setBusy(true); setErr(""); setFindings(null); setDraftFor(null); setSentFor(""); setDraftErr("");
     const d = await fetch(`/api/studio/intel/ask`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId, question: mode === "question" ? q : "", mode }),
@@ -104,6 +143,50 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
                 {f.sources.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-sm">
                     {f.sources.map((s, j) => <a key={j} href={s.url} target="_blank" rel="noreferrer" className="text-accent hover:underline">{s.name || "source"} ↗</a>)}
+                  </div>
+                )}
+
+                {/* CEO THOUGHT-LEADERSHIP (Gary): draft this finding into the client CEO's LinkedIn piece, then email it. */}
+                {f.id && (
+                  <div className="mt-3 border-t border-line pt-3">
+                    {sentFor === f.id ? (
+                      <p className="text-base font-semibold text-[#86efac]">✓ Article emailed to the CEO. A copy is in your inbox.</p>
+                    ) : draftFor === f.id ? (
+                      <div>
+                        {drafting ? (
+                          <p className="text-base text-accent">Drafting the CEO&rsquo;s article…</p>
+                        ) : (
+                          <>
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                              <span className="tabular text-sm uppercase tracking-[0.16em] text-ink-faint">CEO article{ceoName ? ` · ${ceoName}` : ""} · edit before sending</span>
+                              {art && <span className="text-sm text-ink-faint">Image idea: {art}</span>}
+                            </div>
+                            <textarea value={draftText} onChange={(e) => setDraftText(e.target.value)} rows={12}
+                              className="mt-2 w-full rounded-lg border border-line bg-surface-2 px-3.5 py-2.5 text-base leading-relaxed text-ink outline-none focus:border-accent" />
+                            <label className="mt-3 block">
+                              <span className="tabular block text-sm uppercase tracking-[0.16em] text-ink-faint">Send to (CEO email, comma-separated)</span>
+                              <input value={recips} onChange={(e) => setRecips(e.target.value)} placeholder="kagiso@mtn.com, ea@mtn.com"
+                                className="mt-1 w-full rounded-lg border border-line bg-surface-2 px-3.5 py-2 text-base text-ink outline-none focus:border-accent" />
+                            </label>
+                            {draftErr && <p className="mt-2 text-base text-alert">{draftErr}</p>}
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <button onClick={() => sendArticle(f)} disabled={sending || !recips.trim()}
+                                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2 text-base font-bold text-black hover:opacity-90 disabled:opacity-50">
+                                {sending && <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />}
+                                {sending ? "Sending…" : "Approve & send to CEO"}
+                              </button>
+                              <button onClick={() => draftArticle(f)} disabled={drafting || sending} className="rounded-lg border border-line px-4 py-2 text-base text-ink-dim hover:text-ink disabled:opacity-50">Redraft</button>
+                              <button onClick={() => { setDraftFor(null); setDraftErr(""); }} className="rounded-lg px-3 py-2 text-base text-ink-faint hover:text-ink">Cancel</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <button onClick={() => draftArticle(f)} disabled={drafting}
+                        className="inline-flex items-center gap-2 rounded-lg border border-accent/50 px-4 py-2 text-base font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                        ✍️ Draft CEO article
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
