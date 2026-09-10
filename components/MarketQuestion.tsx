@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import Working from "@/components/Working";
+import IntelEmailControl from "@/components/IntelEmailControl";
 
 // ASK THE MARKET A QUESTION (Gary). The Strategist desk, on demand: type a market question about a client and get
 // the same sourced assessment the daily email gives - what changed, what it could do, and the DEFENSIVE/PROACTIVE
@@ -39,8 +40,23 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
   const [sending, setSending] = useState(false);
   const [sentFor, setSentFor] = useState("");
   const [draftErr, setDraftErr] = useState("");
+  // Add-to-Brain (accepts the finding so it is kept for the brain rather than binned).
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const [addingId, setAddingId] = useState("");
 
   const CEO_API = "/api/studio/intel/ceo-article";
+
+  // Save a finding to the brain: accept it (the gate that keeps it) rather than letting it sit unreviewed.
+  async function addToBrain(f: Finding) {
+    if (!f.id || addingId) return;
+    setAddingId(f.id);
+    const d = await fetch(`/api/studio/intel`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clientId, id: f.id, status: "accepted" }),
+    }).then((r) => r.json()).catch(() => null);
+    setAddingId("");
+    if (d?.ok) setAddedIds((prev) => new Set(prev).add(f.id!));
+  }
 
   // Draft the CEO's article from a finding, and prefill the saved recipient(s) for this brain.
   async function draftArticle(f: Finding) {
@@ -74,7 +90,7 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
   async function ask(mode: "question" | "discover" = "question") {
     if (busy || !clientId) return;
     if (mode === "question" && !q.trim()) return;
-    setBusy(true); setErr(""); setFindings(null); setDraftFor(null); setSentFor(""); setDraftErr("");
+    setBusy(true); setErr(""); setFindings(null); setDraftFor(null); setSentFor(""); setDraftErr(""); setAddedIds(new Set());
     const d = await fetch(`/api/studio/intel/ask`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId, question: mode === "question" ? q : "", mode }),
@@ -182,10 +198,20 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
                         )}
                       </div>
                     ) : (
-                      <button onClick={() => draftArticle(f)} disabled={drafting}
-                        className="inline-flex items-center gap-2 rounded-lg border border-accent/50 px-4 py-2 text-base font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
-                        ✍️ Draft CEO article
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        {addedIds.has(f.id) ? (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#4ade80]/40 bg-[#4ade80]/10 px-4 py-2 text-base font-semibold text-[#86efac]">✓ Added to brain</span>
+                        ) : (
+                          <button onClick={() => addToBrain(f)} disabled={addingId === f.id}
+                            className="inline-flex items-center gap-2 rounded-lg border border-line px-4 py-2 text-base font-semibold text-ink-dim hover:text-ink hover:border-line-strong disabled:opacity-50">
+                            {addingId === f.id ? "Adding…" : "＋ Add to brain"}
+                          </button>
+                        )}
+                        <button onClick={() => draftArticle(f)} disabled={drafting}
+                          className="inline-flex items-center gap-2 rounded-lg border border-accent/50 px-4 py-2 text-base font-semibold text-accent hover:bg-accent/10 disabled:opacity-50">
+                          ✍️ Write me a LinkedIn article
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
@@ -193,6 +219,13 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
             );
           })}
           <p className="text-sm text-ink-faint">These also land in <a href="/strategist" className="text-accent hover:underline">The Strategist · Daily Intelligence</a> queue to accept or bin.</p>
+        </div>
+      )}
+
+      {/* AUTOMATION (Gary): run this on a schedule and auto-draft the CEO article, right here for the selected brain. */}
+      {clientId && (
+        <div className="mt-5">
+          <IntelEmailControl clientId={clientId} clientName={brainName} />
         </div>
       )}
     </div>
