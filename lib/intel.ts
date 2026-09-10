@@ -320,7 +320,7 @@ const SCHEMA = {
 // not of the engine, and two sources of truth for the same setting is how they drift apart.
 
 // Run one role's daily research. Returns the findings it PROPOSES (already stored, status 'new').
-export async function runIntel(clientId: string, role: "journalist" | "strategist", today: string, userEmail?: string | null, focus?: string | null): Promise<Intel[]> {
+export async function runIntel(clientId: string, role: "journalist" | "strategist", today: string, userEmail?: string | null, focus?: string | null, windowOverride?: number | null): Promise<Intel[]> {
   const key = await getSecret("anthropic");
   if (!key) throw new Error("Claude isn't connected");
 
@@ -334,7 +334,10 @@ export async function runIntel(clientId: string, role: "journalist" | "strategis
 
   const client = new Anthropic({ apiKey: key });
   const kit = await getBrandKit(clientId).catch(() => null);
-  const windowDays = cfg.windowDays;
+  // The recency window defaults to the brain's own window_days, but an ON-DEMAND call may override it (Gary): a
+  // specific "ask the market" question looks back up to ~90 days, a proactive "find what's new" sweep only ~14.
+  // Clamped to a sane [1, 120] so an override can never mine ancient material as if it were news.
+  const windowDays = windowOverride && windowOverride > 0 ? Math.min(120, Math.max(1, Math.round(windowOverride))) : cfg.windowDays;
 
   // WORK WITH THE RESEARCHER (Gary). The Strategist watches for what CHANGES the positions the Researcher's deep
   // dives have established, so it reads them first and reports movement against them rather than in a vacuum.

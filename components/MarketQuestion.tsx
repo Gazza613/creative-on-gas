@@ -9,6 +9,7 @@ import Working from "@/components/Working";
 
 type Client = { id: string; name: string };
 type Finding = {
+  id?: string;
   headline: string; why_it_matters: string; detail: string | null;
   impact_risk: string | null; campaign_response: string | null; material: boolean;
   sources: { name: string; url: string }[];
@@ -29,15 +30,18 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
   const [findings, setFindings] = useState<Finding[] | null>(null);
   const [err, setErr] = useState("");
 
-  async function ask() {
-    if (!q.trim() || !clientId || busy) return;
+  // TWO MODES (Gary): "question" answers a specific ask (looks back ~90 days); "discover" proactively finds what is
+  // NEW and relevant to the brain with no question typed (only ~14 days, so it surfaces genuine change).
+  async function ask(mode: "question" | "discover" = "question") {
+    if (busy || !clientId) return;
+    if (mode === "question" && !q.trim()) return;
     setBusy(true); setErr(""); setFindings(null);
     const d = await fetch(`/api/studio/intel/ask`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, question: q }),
+      body: JSON.stringify({ clientId, question: mode === "question" ? q : "", mode }),
     }).then((r) => r.json()).catch(() => null);
     setBusy(false);
-    if (!d?.ok) { setErr(d?.error || "Couldn't run that question."); return; }
+    if (!d?.ok) { setErr(d?.error || "Couldn't run that."); return; }
     setFindings(Array.isArray(d.findings) ? d.findings : []);
   }
 
@@ -49,7 +53,7 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
         <h3 className="text-xl font-bold text-ink">Ask the market a question</h3>
         <span className="text-sm text-ink-faint">Live Strategist pod · sourced, never invented</span>
       </div>
-      <p className="mt-1 text-base text-ink-dim">A one-off market read on demand: what a rival did, a category shift, a threat or an opening, with the move it argues for.</p>
+      <p className="mt-1 text-base text-ink-dim">A one-off market read on demand: what a rival did, a category shift, a threat or an opening, with the move it argues for. <b className="text-ink">Find what&rsquo;s new</b> proactively surfaces fresh topics (last 2 weeks); a typed question looks back up to 3 months.</p>
 
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <label className="block">
@@ -61,14 +65,18 @@ export default function MarketQuestion({ clients }: { clients: Client[] }) {
         </label>
       </div>
       <textarea value={q} onChange={(e) => setQ(e.target.value)} rows={2}
-        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask(); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) ask("question"); }}
         placeholder={`e.g. What has changed in the SA fintech market that affects ${brainName} this week? What did GoTyme just do?`}
         className="mt-3 w-full rounded-lg border border-line bg-surface-2 px-3.5 py-2.5 text-base leading-relaxed text-ink outline-none focus:border-accent" />
       <div className="mt-3 flex flex-wrap items-center gap-3">
-        <button onClick={ask} disabled={busy || !q.trim()}
+        <button onClick={() => ask("question")} disabled={busy || !q.trim()}
           className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-base font-bold text-black hover:opacity-90 disabled:opacity-50">
           {busy && <span className="h-4 w-4 animate-spin rounded-full border-2 border-black/30 border-t-black" />}
           {busy ? "Scanning…" : "Ask the market"}
+        </button>
+        <button onClick={() => ask("discover")} disabled={busy}
+          className="inline-flex items-center gap-2 rounded-lg border border-accent/50 px-5 py-2.5 text-base font-bold text-accent hover:bg-accent/10 disabled:opacity-50">
+          ✦ Find what&rsquo;s new
         </button>
         <span className="text-sm text-ink-faint">⌘/Ctrl + Enter · takes a minute, it searches the web live</span>
       </div>

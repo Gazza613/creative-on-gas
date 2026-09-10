@@ -13,18 +13,24 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const session = await auth();
   if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const b = (await req.json().catch(() => ({}))) as { clientId?: string; question?: string };
+  const b = (await req.json().catch(() => ({}))) as { clientId?: string; question?: string; mode?: string };
   const clientId = String(b.clientId || "").trim();
   const question = String(b.question || "").trim().slice(0, 600);
+  // TWO RECENCY MODES (Gary): a specific "ask" question looks back up to ~90 days; a proactive "discover" sweep for
+  // new relevant topics (no question needed) only looks ~14 days, so it surfaces what is genuinely NEW.
+  const mode = b.mode === "discover" ? "discover" : "question";
+  const windowDays = mode === "discover" ? 14 : 90;
   if (!clientId) return NextResponse.json({ error: "Pick the brain first." }, { status: 400 });
-  if (!question) return NextResponse.json({ error: "Type a market question to ask." }, { status: 400 });
+  if (mode === "question" && !question) return NextResponse.json({ error: "Type a market question to ask." }, { status: 400 });
 
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Africa/Johannesburg" }); // YYYY-MM-DD, SAST
   try {
-    const findings = await runIntel(clientId, "strategist", today, session.user?.email ?? null, question);
+    const findings = await runIntel(clientId, "strategist", today, session.user?.email ?? null, mode === "discover" ? null : question, windowDays);
     return NextResponse.json({
       ok: true,
+      mode,
       findings: findings.map((f) => ({
+        id: f.id,
         headline: f.headline,
         why_it_matters: f.why_it_matters,
         detail: f.detail,
