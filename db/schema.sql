@@ -733,6 +733,13 @@ alter table intel_briefs add column if not exists email_recipients jsonb not nul
 -- send step prefills them (e.g. MoMo's Kagiso), editable at send. Separate from email_recipients (the internal
 -- intel digest list); this is the client's CEO, an external recipient of a drafted LinkedIn piece.
 alter table intel_briefs add column if not exists ceo_recipients jsonb not null default '[]'::jsonb;
+-- CEO ARTICLE AUTOMATION CADENCE (Gary). On this cadence the cron finds new topics, drafts the CEO's article and
+-- emails the DRAFT to the internal team (email_recipients) to review and forward on - NEVER straight to the CEO.
+-- Independent of email_schedule (a brain can automate the article without the digest, or vice versa). Off default.
+alter table intel_briefs add column if not exists newsletter_schedule text not null default 'off';
+alter table intel_briefs drop constraint if exists intel_briefs_newsletter_schedule_check;
+alter table intel_briefs add constraint intel_briefs_newsletter_schedule_check
+  check (newsletter_schedule in ('off','daily','weekly','monthly'));
 
 -- Findings are filed into the same queue (so accept/bin and "publish as a CEO article" work unchanged), but a
 -- Researcher finding also carries WHICH of the five sections it belongs to.

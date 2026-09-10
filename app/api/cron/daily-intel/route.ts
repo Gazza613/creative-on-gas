@@ -3,7 +3,9 @@ import { auth } from "@/auth";
 import { cronAuthed } from "@/lib/cron";
 import { sendEmail, emailConfigured } from "@/lib/email";
 import { runIntel, loadIntelBrief, brainsWithIntel, type Intel } from "@/lib/intel";
+import { writeCeoNewsletter } from "@/lib/ceo-newsletter";
 import { emailShell } from "@/lib/email-shell";
+import { db } from "@/lib/db";
 
 // THE DAILY INTELLIGENCE RUN. The Journalist and The Strategist each go and find what changed, decide whether
 // it is MATERIAL, and file it into the "Worth reviewing" queue. Only the material findings are emailed.
@@ -181,6 +183,36 @@ export function buildEmail(client: string, strategist: Intel[], today: string, i
   });
 }
 
+// Render a drafted CEO article to HTML: "## " lines become section headings, blank lines split paragraphs. Shared
+// shape with the on-demand send so a draft reads the same whether it was automated or hand-sent.
+export function renderArticleBody(post: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return post.split(/\n{2,}/).map((blk) => blk.trim()).filter(Boolean).map((blk) => {
+    const h = blk.match(/^#{1,3}\s+(.*)$/);
+    if (h) return `<h3 style="font-size:17px;line-height:1.3;color:#1a1030;margin:22px 0 8px;">${esc(h[1])}</h3>`;
+    return `<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#1a1030;">${esc(blk)}</p>`;
+  }).join("");
+}
+
+// The CEO-article DRAFT email to the internal team: a review banner (who it is for, and that it is NOT yet sent to
+// the CEO), the piece, the image idea, and the finding it was drawn from.
+function ceoDraftEmail(client: string, ceoName: string, post: string, art: string, ceoRecipients: string[], src: Intel): string {
+  const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = post.split(/\n{2,}/);
+  const title = (lines[0] || "").replace(/^#{1,3}\s+/, "").trim();
+  const rest = lines.slice(1).join("\n\n");
+  const intended = ceoRecipients.length ? ceoRecipients.join(", ") : "(no CEO email saved yet on this brain)";
+  return `<div style="max-width:640px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px;">`
+    + `<div style="background:#f5f2fb;border:1px solid #e6def5;border-radius:12px;padding:14px 18px;margin-bottom:20px;">`
+    +   `<div style="font-size:11px;letter-spacing:0.16em;text-transform:uppercase;color:#7c3aed;font-weight:700;">CEO article draft for review</div>`
+    +   `<div style="font-size:13px;line-height:1.6;color:#1a1030;margin-top:6px;">A drafted LinkedIn thought-leadership piece for <b>${esc(ceoName || client + "'s CEO")}</b>. This has <b>not</b> been sent to the CEO. Review it, edit if needed, then forward it on to ${esc(intended)}.</div></div>`
+    + `<h1 style="font-size:22px;line-height:1.25;color:#1a1030;margin:0 0 16px;">${esc(title)}</h1>`
+    + renderArticleBody(rest)
+    + `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #eee;font-size:12px;color:#8a8496;">`
+    +   (art ? `<div><b style="color:#6b6580;">Image idea:</b> ${esc(art)}</div>` : "")
+    +   `<div style="margin-top:6px;"><b style="color:#6b6580;">Drawn from:</b> ${esc(src.headline)}</div></div></div>`;
+}
+
 export async function GET(req: Request) {
   const session = await auth();
   if (!cronAuthed(req) && session?.user?.role !== "super_admin") {
@@ -204,10 +236,21 @@ export async function GET(req: Request) {
   // 'daily' runs every weekday. That gate is the cost dial Gary asked for - not every brain billing five days a
   // week by default.
   const manual = !!only;
+  // The CEO-article automation (Gary) rides the same cron: 'daily' every weekday, 'weekly' on Monday, 'monthly' on
+  // the FIRST Monday of the month (a day the weekday cron is guaranteed to run, so it fires once and never on a
+  // weekend it would miss). A manual single-brain run does both, like the digest.
+  const firstMonday = isMonday && new Date().getUTCDate() <= 7;
+  const emailFires = (s: string) => s === "daily" || (s === "weekly" && isMonday);
+  const newsFires = (s: string) => s === "daily" || (s === "weekly" && isMonday) || (s === "monthly" && firstMonday);
   const clients = configured
     .filter((c) => (only ? c.clientId === only : true))
-    .filter((c) => manual || (c.emailSchedule === "daily") || (c.emailSchedule === "weekly" && isMonday))
-    .map((c) => ({ id: c.clientId, name: c.clientName, schedule: c.emailSchedule, recipients: c.emailRecipients }));
+    .map((c) => ({
+      id: c.clientId, name: c.clientName, schedule: c.emailSchedule, recipients: c.emailRecipients,
+      emailFires: manual || emailFires(c.emailSchedule),
+      newsletterFires: manual || newsFires(c.newsletterSchedule),
+      ceoRules: c.ceoRules, ceoName: c.ceoName, ceoRecipients: c.ceoRecipients,
+    }))
+    .filter((c) => c.emailFires || c.newsletterFires);
   if (!clients.length) return NextResponse.json({ ok: true, skipped: manual ? "no brain has an intel brief" : "no brain is scheduled to run today" });
 
   const out: Record<string, unknown>[] = [];
@@ -247,7 +290,7 @@ export async function GET(req: Request) {
       const to = c.recipients.length ? c.recipients.join(",") : intelRecipients();
 
       let emailed = false;
-      if (sm.length && emailConfigured()) {
+      if (c.emailFires && sm.length && emailConfigured()) {
         await sendEmail({
           to,
           subject: `The Strategist · ${c.name} · ${sm.length} material finding${sm.length === 1 ? "" : "s"} · ${today}`,
@@ -256,7 +299,32 @@ export async function GET(req: Request) {
         }).catch(() => {});
         emailed = true;
       }
-      out.push({ client: c.name, cadence, strategist: strategist.length, material: sm.length, emailed, errors: errors.length ? errors : undefined });
+
+      // CEO ARTICLE AUTOMATION (Gary): on the newsletter cadence, draft the CEO's LinkedIn piece from the strongest
+      // finding and email the DRAFT to the internal team to review and forward on - NEVER to the CEO. Skipped if the
+      // brain has no CEO voice rules, or nothing worth writing about came back.
+      let ceoDrafted = false;
+      if (c.newsletterFires && c.ceoRules) {
+        const top = sm[0] || strategist[0];
+        if (top && emailConfigured()) {
+          const draft = await writeCeoNewsletter(c.id, {
+            headline: top.headline, why_it_matters: top.why_it_matters, detail: top.detail,
+            sources: top.sources, published_at: top.published_at,
+          }, { userEmail: null }).catch(() => null);
+          if (draft && draft.ok) {
+            await db().query(`update studio_intel set newsletter = $2, newsletter_art = $3 where id = $1`,
+              [top.id, draft.post, draft.art?.subject || null]).catch(() => {});
+            await sendEmail({
+              to,
+              subject: `CEO article draft for review · ${c.name} · ${today}`,
+              html: ceoDraftEmail(c.name, c.ceoName, draft.post, draft.art?.subject || "", c.ceoRecipients, top),
+              fromName: "GAS Marketing Automation",
+            }).catch(() => {});
+            ceoDrafted = true;
+          }
+        }
+      }
+      out.push({ client: c.name, cadence, strategist: strategist.length, material: sm.length, emailed, ceoDrafted, errors: errors.length ? errors : undefined });
     } catch (e) {
       out.push({ client: c.name, error: String((e as Error)?.message || e).slice(0, 160) });
     }

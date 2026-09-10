@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 //   2. RECIPIENTS - the brain's own list. Empty falls back to the platform default so nothing silently stops.
 
 type Schedule = "off" | "daily" | "weekly";
+type NewsletterSchedule = "off" | "daily" | "weekly" | "monthly";
 
 const OPTIONS: { id: Schedule; label: string; sub: string }[] = [
   { id: "off", label: "Off", sub: "No run, no email" },
@@ -19,11 +20,19 @@ const OPTIONS: { id: Schedule; label: string; sub: string }[] = [
   { id: "weekly", label: "Weekly", sub: "Mon, 08:30" },
 ];
 
+const NEWS_OPTIONS: { id: NewsletterSchedule; label: string; sub: string }[] = [
+  { id: "off", label: "Off", sub: "No draft" },
+  { id: "daily", label: "Daily", sub: "Mon-Fri" },
+  { id: "weekly", label: "Weekly", sub: "Mondays" },
+  { id: "monthly", label: "Monthly", sub: "1st Monday" },
+];
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function IntelEmailControl({ clientId, clientName }: { clientId: string; clientName: string }) {
   const [briefed, setBriefed] = useState(true);
   const [schedule, setSchedule] = useState<Schedule>("weekly");
+  const [newsletterSchedule, setNewsletterSchedule] = useState<NewsletterSchedule>("off");
   const [recipients, setRecipients] = useState<string[]>([]);
   const [draft, setDraft] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -43,6 +52,7 @@ export default function IntelEmailControl({ clientId, clientName }: { clientId: 
         if (!live) return;
         setBriefed(d?.briefed !== false);
         setSchedule((["off", "daily", "weekly"].includes(d?.schedule) ? d.schedule : "weekly") as Schedule);
+        setNewsletterSchedule((["off", "daily", "weekly", "monthly"].includes(d?.newsletterSchedule) ? d.newsletterSchedule : "off") as NewsletterSchedule);
         setRecipients(Array.isArray(d?.recipients) ? d.recipients : []);
         setLoaded(true);
       })
@@ -52,11 +62,11 @@ export default function IntelEmailControl({ clientId, clientName }: { clientId: 
 
   // Persist the whole state (cadence + list together, the way the route writes it). Called on every change so
   // there is nothing to remember to press.
-  const persist = useCallback(async (next: { schedule: Schedule; recipients: string[] }) => {
+  const persist = useCallback(async (next: { schedule: Schedule; recipients: string[]; newsletterSchedule?: NewsletterSchedule }) => {
     setSaving(true); setErr("");
     const r = await fetch("/api/studio/intel/schedule", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ clientId, schedule: next.schedule, recipients: next.recipients }),
+      body: JSON.stringify({ clientId, schedule: next.schedule, recipients: next.recipients, newsletterSchedule: next.newsletterSchedule ?? newsletterSchedule }),
     }).then((x) => x.json()).catch(() => null);
     setSaving(false);
     if (r?.ok) {
@@ -66,12 +76,18 @@ export default function IntelEmailControl({ clientId, clientName }: { clientId: 
     } else {
       setErr(r?.error || "Couldn't save that. Please try again.");
     }
-  }, [clientId]);
+  }, [clientId, newsletterSchedule]);
 
   function pick(s: Schedule) {
     if (s === schedule || !briefed) return;
     setSchedule(s);
     persist({ schedule: s, recipients });
+  }
+
+  function pickNewsletter(s: NewsletterSchedule) {
+    if (s === newsletterSchedule || !briefed) return;
+    setNewsletterSchedule(s);
+    persist({ schedule, recipients, newsletterSchedule: s });
   }
 
   function addRecipient() {
@@ -162,6 +178,32 @@ export default function IntelEmailControl({ clientId, clientName }: { clientId: 
             className="rounded-lg border border-line px-3.5 py-2 text-[15px] font-semibold text-ink-dim transition hover:border-line-strong hover:text-ink disabled:opacity-40">
             + Add
           </button>
+        </div>
+      </div>
+
+      {/* CEO ARTICLE AUTOMATION (Gary): on this cadence the run finds a fresh topic, drafts the client CEO's
+          LinkedIn article and emails the DRAFT to the recipients above, for you to review and forward to the CEO.
+          It never emails the CEO directly. Off by default; it fires a paid run when it lands, like the digest. */}
+      <div className="mt-4 border-t border-line pt-4">
+        <label className="tabular block text-sm uppercase tracking-[0.2em] text-ink-faint">CEO thought-leadership article</label>
+        <p className="mt-1.5 text-[14px] leading-relaxed text-ink-dim">
+          Auto-draft <b className="text-ink">{clientName}</b>&apos;s CEO article on this cadence and email the draft to the
+          list above to review, then forward to the CEO. Never sent to the CEO automatically.
+        </p>
+        <div role="radiogroup" aria-label="CEO article automation cadence" className="mt-3 grid grid-cols-4 gap-2">
+          {NEWS_OPTIONS.map((o) => {
+            const on = newsletterSchedule === o.id;
+            return (
+              <button key={o.id} role="radio" aria-checked={on} disabled={!loaded}
+                onClick={() => pickNewsletter(o.id)}
+                className={`rounded-lg border px-2.5 py-2.5 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#a855f7] disabled:opacity-50 ${
+                  on ? "border-[#a855f7]/60 bg-[#a855f7]/12" : "border-line bg-surface-2 hover:border-line-strong"
+                }`}>
+                <div className={`text-[15px] font-bold ${on ? "text-[#c79bff]" : "text-ink"}`}>{o.label}</div>
+                <div className="mt-0.5 text-[12px] text-ink-faint">{o.sub}</div>
+              </button>
+            );
+          })}
         </div>
       </div>
 

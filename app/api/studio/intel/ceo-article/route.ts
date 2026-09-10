@@ -32,13 +32,18 @@ export async function GET(req: Request) {
 // Render the article as a clean, plain email (title as heading, blank-line paragraphs). No branding chrome: it
 // is the CEO's own words, ready to paste into LinkedIn or read as-is.
 function articleHtml(post: string, ceoName: string): string {
-  const lines = post.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-  const title = lines.shift() || "";
-  const paras = lines.map((p) => `<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#1a1030;">${esc(p)}</p>`).join("");
+  const blocks = post.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+  const title = (blocks.shift() || "").replace(/^#{1,3}\s+/, "");
+  // "## " lines are section headings; everything else is a paragraph. Matches the automated draft's renderer.
+  const bodyHtml = blocks.map((blk) => {
+    const h = blk.match(/^#{1,3}\s+(.*)$/);
+    if (h) return `<h3 style="font-size:17px;line-height:1.3;color:#1a1030;margin:22px 0 8px;">${esc(h[1])}</h3>`;
+    return `<p style="margin:0 0 14px;font-size:15px;line-height:1.7;color:#1a1030;">${esc(blk)}</p>`;
+  }).join("");
   return `<div style="max-width:600px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;padding:24px;">`
     + `<div style="font-size:10px;letter-spacing:0.18em;text-transform:uppercase;color:#7c3aed;font-weight:700;margin-bottom:14px;">Thought-leadership draft${ceoName ? ` for ${esc(ceoName)}` : ""}</div>`
     + `<h1 style="font-size:22px;line-height:1.25;color:#1a1030;margin:0 0 16px;">${esc(title)}</h1>`
-    + paras
+    + bodyHtml
     + `<div style="margin-top:22px;padding-top:14px;border-top:1px solid #eee;font-size:11px;color:#8a8496;">Drafted by GAS Marketing Automation, The Agency of NOW. Please review before publishing.</div></div>`;
 }
 const esc = (s: unknown) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

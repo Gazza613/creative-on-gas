@@ -15,8 +15,8 @@ export const NEWSLETTER_PIECE = {
   type: "object",
   additionalProperties: false,
   properties: {
-    title: { type: "string", description: "The newsletter title. Short, plain and substantive - what the piece is actually about. No colon-subtitle cliche, no story hook, no question." },
-    body: { type: "string", description: "The piece: 180-280 words, professional executive register, substance-led. Plain paragraphs separated by blank lines. No markdown, no headings. Every paragraph says something the reader did not know - but do NOT force a statistic into every piece; most need none, and any figure used must be highly credible and attributable." },
+    title: { type: "string", description: "The newsletter title. Short, plain and substantive - what the piece is actually about. No colon-subtitle cliche, no story hook, no question. No '#' marker." },
+    body: { type: "string", description: "The piece: a DETAILED LinkedIn newsletter of 800 to 1500 words (a 4 to 7 minute read), professional executive register, substance-led. Structure it for a mobile reader: an opening that frames why this matters NOW, then 3 to 5 short SECTION HEADINGS, each on its OWN line prefixed with '## ' (markdown h2), with 2 to 4 SHORT paragraphs under each, and a closing takeaway paragraph. Every section must say something the reader did not know. Do NOT force a statistic into every section; most need none, and any figure used must be highly credible and attributable. Use NO markdown other than the '## ' heading marker (no bold, bullets or links inline). Separate every block by a blank line." },
     image_subject: { type: "string", description: "ART DIRECTION for the LinkedIn image that runs beside a CEO's market note. A real, specific South African person or scene that carries the post's POINT with DIGNITY and CONFIDENCE - a capable adult, a working business, a moment of competence. NOT anxious, worried, struggling, pitiable or a narrated hardship scene: this sits under an executive's name, and a worried face reads as pity, not value. No products, no phones held up like an advert, no logos, no text described." },
     image_callout: { type: "string", description: "ONE short line for the image, max ~24 characters. It must carry the post's central POINT or VALUE in a professional register - not a story line, not a narrated moment, not a question, not an offer or price. Think a confident statement a CEO would stand behind, e.g. 'Money that reaches everyone'. No competitor, no product pitch." },
   },
@@ -78,7 +78,7 @@ export async function writeCeoNewsletter(clientId: string, m: NewsletterMaterial
   const client = new Anthropic({ apiKey: key });
   const res = await client.messages.create({
     model: PREMIUM,
-    max_tokens: 2000,
+    max_tokens: 4000,
     system: `${cfg.scope}\n\n${cfg.ceoRules}\n\n${REGISTER}`,
     tools: [{ name: "piece", description: "The CEO's newsletter piece and the art direction for its image.", input_schema: NEWSLETTER_PIECE }],
     tool_choice: { type: "tool", name: "piece" },
