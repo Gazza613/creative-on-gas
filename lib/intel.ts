@@ -60,7 +60,8 @@ const STYLE = `HOW TO WRITE THIS (it is read by busy marketers and by the client
 - No consultant register: avoid "two-sided", "doctrine", "materially", "leverage", "signals", "posture",
   "vectors". Write as if telling a colleague what happened and what we should do about it.
 - Lead with the point. The first sentence says what happened or what to do, not the build-up.
-- UK British spelling, ALWAYS. NEVER use an em dash or an en dash: use a comma, a full stop, or a plain hyphen.`;
+- UK British spelling, ALWAYS. NEVER use an em dash or an en dash: use a comma, a full stop, or a plain hyphen.
+- BANNED PHRASE: never write "the uncomfortable truth" or any variant of it. State the point plainly instead.`;
 
 // THE MARKETING LENS (Gary: "we are a marketing agency"). Both intelligence desks - the weekly Strategist and
 // the on-demand Researcher - must think like the best marketing mind in the room, not a generic analyst. Every

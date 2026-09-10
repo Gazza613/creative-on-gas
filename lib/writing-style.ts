@@ -31,6 +31,7 @@ AVOID:
 - Excessive transitions. Consecutive paragraphs with the same structure or length. Overly symmetrical lists, forced groups of three.
 - Excessive or generic headings ("Key Takeaways", "Why It Matters", "Benefits", "Final Thoughts").
 - Rhetorical questions as transitions. Fake conversational transitions ("Here's the thing", "Here's where it gets interesting", "Think about it", "Let that sink in").
+- BANNED PHRASE: never write "the uncomfortable truth" (or "here's the uncomfortable truth", "an uncomfortable truth"), in any form. Make the point plainly instead.
 - Dramatic one-line fragments for emphasis. Excessive parentheticals, qualification and hedging.
 - Polished corporate language, generic claims without concrete examples. Unnatural vocabulary variation. Treating both sides as equal when the evidence favours one.
 - Ending sections with generic inspirational statements. Filler transition sentences. Explaining obvious implications. Sounding overly complete, exhaustive, balanced or sanitised.

@@ -4,6 +4,11 @@ import { getBrandKit } from "./studio";
 import { loadIntelBrief } from "./intel";
 import { PREMIUM } from "./vendors/anthropic";
 import { meterClaude } from "./usage";
+import { WRITING_STYLE } from "./writing-style";
+
+// The CEO piece inherits the full GAS writing guide, with ONE reconciliation: this format DOES use section
+// headings, so the '## ' marker is the single permitted markdown, and headings must be concrete, never generic.
+const NEWSLETTER_FORMAT_NOTE = `FORMAT NOTE (overrides the writing guide only where they conflict): this newsletter DOES use 3 to 5 short section headings, each on its own line prefixed with "## ". That heading marker is the ONLY markdown allowed anywhere in the piece: use no other markdown, no asterisks, no hashtags. Every heading must be concrete and specific to this piece, never a generic label like "Key Takeaways" or "Why It Matters".`;
 
 // THE CEO NEWSLETTER WRITER (shared). Turns a finding OR a Researcher fact into the CEO's LinkedIn piece, in that
 // brain's voice and inside its scope + compliance. Reused by the Journalist desk, the intel newsletter route, and
@@ -48,7 +53,8 @@ const REGISTER = `TONE AND COMPLIANCE (on top of the CEO rules above, never over
   says must survive that client's regulatory regime (for SA life cover: FSCA, FAIS, PPR). When in doubt, make
   the point about what the company stands for and what it makes possible, not about a product, a price or a
   benefit you cannot prove.
-- UK British spelling. Never an em dash or an en dash.`;
+- UK British spelling. Never an em dash or an en dash.
+- BANNED PHRASE: never write "the uncomfortable truth" (or any variant like "here's the uncomfortable truth" / "an uncomfortable truth"). Make the point plainly instead.`;
 
 /**
  * Write the CEO's LinkedIn newsletter piece from a finding/claim, inside this brain's voice + scope. `notes` folds
@@ -83,7 +89,7 @@ export async function writeCeoNewsletter(clientId: string, m: NewsletterMaterial
   const res = await client.messages.create({
     model: PREMIUM,
     max_tokens: 4000,
-    system: `${cfg.scope}\n\n${voice}\n\n${REGISTER}`,
+    system: `${cfg.scope}\n\n${voice}\n\n${REGISTER}\n\n${WRITING_STYLE}\n\n${NEWSLETTER_FORMAT_NOTE}`,
     tools: [{ name: "piece", description: "The CEO's newsletter piece and the art direction for its image.", input_schema: NEWSLETTER_PIECE }],
     tool_choice: { type: "tool", name: "piece" },
     messages: [{ role: "user", content: `Write the CEO's newsletter piece from the material below, and art-direct the LinkedIn image that runs with it.${rewrite}\n\n${material}` }],
