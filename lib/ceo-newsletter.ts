@@ -60,8 +60,12 @@ export async function writeCeoNewsletter(clientId: string, m: NewsletterMaterial
   // The brain is the ringfence: the scope lock, the CEO voice and the doctrine all come from THIS client.
   const cfg = await loadIntelBrief(clientId);
   if (!cfg) return { ok: false, error: "This brain has no brief, so its scope is unknown.", status: 400 };
-  // Refuse rather than borrow another brain's voice.
-  if (!cfg.ceoRules) return { ok: false, error: `${cfg.clientName} has no CEO writing rules yet, so there is no voice to write in. Add them to this brain before publishing under anyone's name.`, status: 400 };
+  // A brain with explicit CEO voice rules uses them. A brain WITHOUT them (e.g. GAS's own) still drafts, in a
+  // sensible default executive register grounded in THIS brain's own scope and doctrine below (never borrowing
+  // another brain's voice). It is a draft a human reviews before sending, and adding ceo_rules later sharpens the
+  // voice. Refusing outright just to protect a voice that was never set stops the team drafting at all (Gary).
+  const voice = cfg.ceoRules?.trim()
+    || `You are writing in the voice of ${cfg.clientName}'s CEO for a LinkedIn thought-leadership newsletter. No bespoke voice rules are on file for this brain yet, so write in a credible, warm, plain-spoken executive register appropriate to ${cfg.clientName}'s size and category: first person where it reads naturally, confident but never boastful or salesy, substance first. Ground everything in ${cfg.clientName}'s own scope and doctrine below, and never invent facts about the business.`;
   const kit = await getBrandKit(clientId).catch(() => null);
 
   const srcs = m.sources || [];
@@ -79,7 +83,7 @@ export async function writeCeoNewsletter(clientId: string, m: NewsletterMaterial
   const res = await client.messages.create({
     model: PREMIUM,
     max_tokens: 4000,
-    system: `${cfg.scope}\n\n${cfg.ceoRules}\n\n${REGISTER}`,
+    system: `${cfg.scope}\n\n${voice}\n\n${REGISTER}`,
     tools: [{ name: "piece", description: "The CEO's newsletter piece and the art direction for its image.", input_schema: NEWSLETTER_PIECE }],
     tool_choice: { type: "tool", name: "piece" },
     messages: [{ role: "user", content: `Write the CEO's newsletter piece from the material below, and art-direct the LinkedIn image that runs with it.${rewrite}\n\n${material}` }],
