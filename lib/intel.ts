@@ -118,11 +118,13 @@ export async function loadDeskContext(clientId: string, ofRole: "researcher" | "
   return rows.map((r) => ({ headline: String(r.headline || ""), why: String(r.why_it_matters || "") }));
 }
 
-const HONESTY = (windowDays: number) => `HONESTY RULES:
+const HONESTY = (windowDays: number, answerMode = false) => `HONESTY RULES:
 - Every finding must carry a REAL source URL you actually read. If you cannot source it, do not report it.
 - Grade confidence honestly: high (primary source - regulator, company results, statute), medium (credible secondary - law firm, trade press, fact-checker), low (single source, thin, or inferred).
 - Mark material=true ONLY if this would actually change what we say or do. Most news is not material. A quiet day with nothing material is a CORRECT result - say so rather than padding.
-- RECENCY IS A HARD GATE. This is a DAILY intelligence run: you report WHAT CHANGED. Only report things published or announced in the LAST ${windowDays} DAYS. Older material - however good - is BACKGROUND, not news, and it already lives in our doctrine. Do not report it. A stale finding presented as current is worse than no finding.
+${answerMode
+  ? `- RECENCY: the team asked a direct question, so ANSWER it. Lead with the newest developments (ideally the last ${windowDays} days), but you MAY include essential background and your own sourced assessment even when it is older than that - context that answers the question is welcome, it does not all have to be breaking news. Date every source and clearly flag anything older than the window. Never present old material as if it broke today.`
+  : `- RECENCY IS A HARD GATE. This is a DAILY intelligence run: you report WHAT CHANGED. Only report things published or announced in the LAST ${windowDays} DAYS. Older material - however good - is BACKGROUND, not news, and it already lives in our doctrine. Do not report it. A stale finding presented as current is worse than no finding.`}
 - HYPER-FOCUS ON THE NEWEST. Inside the window, newer beats older every time: something from the last few days is worth far more to us than something from three weeks ago, even if the older item is more interesting. Search for the most recent developments FIRST and report the freshest material you can stand up. Order your findings newest first.
 - DATE EVERY FINDING. Give published_at as the date the SOURCE was published or the event happened - NOT today. If you cannot establish the date, leave it empty rather than guessing - but know that an undated finding will be REJECTED, because we cannot claim it is current.
 - Also give 'period' when the data covers a span that differs from the publication date (e.g. a report published this month describing FY2025). Recency of PUBLICATION is not recency of DATA.`;
@@ -364,18 +366,25 @@ export async function runIntel(clientId: string, role: "journalist" | "strategis
   // A FREE-TEXT QUESTION from the team (the dashboard "Ask the market" box). It steers this run to answer that
   // question directly, with sourced findings, while still surfacing anything else genuinely material. It never
   // loosens the scope lock or the no-fabrication rule.
-  const focusLine = focus?.trim()
-    ? `\n\nTHE TEAM HAS A SPECIFIC QUESTION FOR THIS RUN - make answering it the PRIORITY: "${focus.trim().slice(0, 600)}"\nSearch specifically to answer it and file sourced findings that address it directly. Still flag anything else genuinely material you find, but lead with the answer to this question. If the honest answer is "nothing solid found", say so rather than padding.`
+  const answerMode = !!focus?.trim();
+  const focusLine = answerMode
+    ? `\n\nTHE TEAM HAS A SPECIFIC QUESTION FOR THIS RUN - answering it is the PRIORITY: "${focus!.trim().slice(0, 600)}"\nSearch specifically to answer it and file sourced findings that address it directly, then flag anything else genuinely material. If the EXACT subject is not a direct player in ${cfg.clientName}'s market (wrong country, different sector, a name mix-up), DO NOT just return nothing: file one finding that says so plainly and pivots to the nearest relevant read (for example the local equivalent, or the closest real competitor), so the team always gets a useful answer. Only return empty if there is genuinely nothing sourced to say at all.`
     : "";
-  const brief = `Today is ${today}. Research what has changed that matters to ${cfg.clientName}, strictly inside your scope lock.${focusLine}\n\n` +
-    `WHAT WE ALREADY KNOW (do NOT report these back as new - only report what ADDS to or CONTRADICTS this):\n` +
-    `${(kit?.tone_notes || "(no doctrine loaded)").slice(0, 6000)}${researchContext}\n\n` +
-    `Search the web now. Then set out what is genuinely new and worth our attention, with the real source for each.`;
+  const opening = answerMode
+    ? `Today is ${today}. The team has asked a specific question. Give a genuine, sourced market read that ANSWERS it, strictly inside your scope lock.${focusLine}`
+    : `Today is ${today}. Research what has changed that matters to ${cfg.clientName}, strictly inside your scope lock.${focusLine}`;
+  const knowLine = answerMode
+    ? `WHAT WE ALREADY KNOW (use this as context to ground your answer; build on it, do not merely restate it):`
+    : `WHAT WE ALREADY KNOW (do NOT report these back as new - only report what ADDS to or CONTRADICTS this):`;
+  const closing = answerMode
+    ? `Search the web now and answer the question with real sources.`
+    : `Search the web now. Then set out what is genuinely new and worth our attention, with the real source for each.`;
+  const brief = `${opening}\n\n${knowLine}\n${(kit?.tone_notes || "(no doctrine loaded)").slice(0, 6000)}${researchContext}\n\n${closing}`;
 
   const research = await client.messages.create({
     model: PREMIUM,
     max_tokens: 6000,
-    system: `${cfg.scope}${siteAnchor(cfg.clientName, cfg.website)}\n\n${roleBrief}\n\n${MARKETING_LENS}\n\n${ASSESSMENT}\n\n${HONESTY(windowDays)}\n\n${STYLE}`,
+    system: `${cfg.scope}${siteAnchor(cfg.clientName, cfg.website)}\n\n${roleBrief}\n\n${MARKETING_LENS}\n\n${ASSESSMENT}\n\n${HONESTY(windowDays, answerMode)}\n\n${STYLE}`,
     tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 10 } as unknown as Anthropic.Tool],
     messages: [{ role: "user", content: brief }],
   });
@@ -400,7 +409,7 @@ export async function runIntel(clientId: string, role: "journalist" | "strategis
     max_tokens: 6000,
     // STYLE belongs here most of all: this is the step that writes the words the team actually reads, and it
     // never carried the UK-spelling / no-em-dash rule at all, which is how em dashes kept reaching the inbox.
-    system: `${cfg.scope}${siteAnchor(cfg.clientName, cfg.website)}\n\n${MARKETING_LENS}\n\n${HONESTY(windowDays)}\n\n${ASSESSMENT}\n\n${STYLE}\n\nFile the research below as structured findings. Carry the REAL source URLs through - never invent one. If the research found nothing genuinely new, return an empty findings list and quiet_day=true. A quiet day is a correct answer, not a failure.`,
+    system: `${cfg.scope}${siteAnchor(cfg.clientName, cfg.website)}\n\n${MARKETING_LENS}\n\n${HONESTY(windowDays, answerMode)}\n\n${ASSESSMENT}\n\n${STYLE}\n\nFile the research below as structured findings. Carry the REAL source URLs through - never invent one. If the research found nothing genuinely new, return an empty findings list and quiet_day=true. A quiet day is a correct answer, not a failure.`,
     tools: [{ name: "report", description: "The day's findings, each with a real source.", input_schema: SCHEMA }],
     tool_choice: { type: "tool", name: "report" }, // FORCED - a report always comes back
     messages: [{ role: "user", content: `Research notes from today's run:\n\n${notes.slice(0, 20000)}` }],
